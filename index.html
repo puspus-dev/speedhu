@@ -212,28 +212,46 @@
     function makeBlob(size){ const u8 = new Uint8Array(size); crypto.getRandomValues(u8); return new Blob([u8]); }
 
     async function measureUpload(sec, streams){
-      phase.textContent='feltöltés'; phaseId='upload'; setGauge(0);
-      let total=0, last=0, lastT=performance.now(); let peak=0;
-      const end = performance.now() + sec*1000;
-      const workers = Array.from({length:streams}, ()=> (async()=>{
-        while(performance.now()<end){
-          const body = makeBlob(2*1024*1024); // 2MiB chunkok
-          try{ await fetch(withProxy(UPLOAD_ENDPOINT), {method:'POST', body}); total += body.size; }catch(e){ /* ignore */ }
-        }
-      })());
-      while(performance.now()<end){
-        await sleep(SAMPLE_MS);
-        const now = performance.now();
-        const dt = (now-lastT)/1000; const bytes = total-last; lastT=now; last=total;
-        const bps = bytes/dt; peak = Math.max(peak,bps);
-        const elapsed = sec - Math.max(0,(end-now)/1000);
-        const avg = total/Math.max(elapsed,0.001);
-        setGauge(bps*8/1e6);
-        ulAvgEl.textContent = (avg*8/1e6).toFixed(1);
-        ulPeakEl.textContent = (peak*8/1e6).toFixed(1);
-      }
-      await Promise.allSettled(workers);
+  phase.textContent='feltöltés'; 
+  phaseId='upload'; 
+  setGauge(0);
+
+  let total=0, last=0, lastT=performance.now(); 
+  let peak=0;
+  const end = performance.now() + sec*1000;
+
+  // Több szál párhuzamos feltöltéshez
+  const workers = Array.from({length:streams}, ()=> (async()=>{
+    while(performance.now()<end){
+      const body = makeBlob(2*1024*1024); // 2 MiB chunkok
+      try{
+        const res = await fetch(withProxy(UPLOAD_ENDPOINT), {method:'POST', body});
+        if(res.ok) total += body.size;
+      }catch(e){ /* ha hiba, folytatjuk a többi próbálkozást */ }
     }
+  })());
+
+  // Élő gauge frissítés
+  while(performance.now()<end){
+    await sleep(SAMPLE_MS);
+    const now = performance.now();
+    const dt = (now-lastT)/1000; 
+    const bytes = total-last; 
+    lastT = now; 
+    last = total;
+    const bps = bytes/dt; 
+    peak = Math.max(peak,bps);
+    const elapsed = sec - Math.max(0,(end-now)/1000);
+    const avg = total/Math.max(elapsed,0.001);
+
+    setGauge(bps*8/1e6);
+    ulAvgEl.textContent = (avg*8/1e6).toFixed(1);
+    ulPeakEl.textContent = (peak*8/1e6).toFixed(1);
+  }
+
+  await Promise.allSettled(workers);
+}
+
 
     async function startTest(){
       if(running) return; running=true; clearErr(); showOk('Proxy: '+CURRENT_PROXY);
