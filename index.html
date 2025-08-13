@@ -1,171 +1,259 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="hu">
 <head>
-<meta charset="UTF-8">
-<title>SpeedHU - Sebességmérés</title>
-<style>
-  body {
-    margin: 0;
-    font-family: Arial, sans-serif;
-    background-color: #000;
-    color: #fff;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    height: 100vh;
-    overflow: hidden;
-  }
-  canvas {
-    background-color: #111;
-    border-radius: 50%;
-  }
-  #info {
-    position: absolute;
-    top: 10%;
-    text-align: center;
-    font-size: 1.5em;
-  }
-  #startBtn {
-    margin-top: 1em;
-    padding: 0.5em 2em;
-    font-size: 1em;
-    cursor: pointer;
-    border: none;
-    border-radius: 10px;
-    background: #222;
-    color: #fff;
-    transition: background 0.3s;
-  }
-  #startBtn:hover { background: #444; }
-</style>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SpeedHU - Sebességmérés</title>
+  <style>
+    :root{
+      --bg:#0a0a0a; --ring:#171717; --text:#f8fafc; --muted:#9ca3af;
+      --dl:#facc15; /* sárga */
+      --ul:#a78bfa; /* lila */
+    }
+    html,body{height:100%}
+    body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,system-ui,Segoe UI,Roboto,Arial,sans-serif;}
+    .wrap{min-height:100%;display:grid;place-items:center;padding:24px}
+    .grid{display:grid;grid-template-columns:380px minmax(280px,1fr);gap:24px;max-width:1100px;width:100%}
+    @media (max-width:900px){.grid{grid-template-columns:1fr}}
+
+    /* Gauge */
+    .gauge{position:relative;width:340px;height:340px;border-radius:50%;
+      background:conic-gradient(var(--dl) 0deg, var(--ring) 0deg);
+      transform:rotate(-135deg); transition:filter .3s ease;}
+    .pulse-dl{filter:drop-shadow(0 0 28px rgba(250,204,21,.25))}
+    .pulse-ul{filter:drop-shadow(0 0 28px rgba(167,139,250,.25))}
+    .inner{position:absolute;inset:18px;border-radius:50%;background:linear-gradient(180deg,#0b0b0b,#0e0e0e);display:flex;flex-direction:column;align-items:center;justify-content:center;transform:rotate(135deg)}
+    .title{font-size:14px;letter-spacing:.14em;color:var(--muted);text-transform:uppercase}
+    .value{font-size:64px;font-weight:800;letter-spacing:-.02em}
+    .unit{font-size:14px;color:var(--muted)}
+    .hint{font-size:12px;color:var(--muted);margin-top:6px}
+
+    .card{background:#0e0e0e;border:1px solid #1f2937;border-radius:18px;padding:16px}
+    .row{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+    .kpi{background:#0b0b0b;border:1px solid #1f2937;border-radius:14px;padding:14px;text-align:center}
+    .kpi .k{font-size:38px;font-weight:800}
+    .kpi .l{font-size:12px;color:var(--muted)}
+    .controls{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:8px}
+    select{width:100%;background:#0b0b0b;color:var(--text);border:1px solid #1f2937;border-radius:10px;padding:8px}
+
+    .err{color:#fca5a5;font-size:13px;margin-top:8px;display:none}
+    .ok{color:#86efac;font-size:13px;margin-top:8px;display:none}
+    a{color:#93c5fd}
+  </style>
 </head>
 <body>
-<div id="info">
-  <div>Ping: <span id="ping">0</span> ms</div>
-  <div>Jitter: <span id="jitter">0</span> ms</div>
-  <div>Letöltés: <span id="download">0.0</span> Mbps</div>
-  <div>Feltöltés: <span id="upload">0.0</span> Mbps</div>
-  <button id="startBtn">Teszt!</button>
-</div>
-<canvas id="speedCanvas" width="300" height="300"></canvas>
-<script>
-const canvas = document.getElementById('speedCanvas');
-const ctx = canvas.getContext('2d');
-const radius = canvas.width / 2 - 20;
+  <div class="wrap">
+    <main class="grid">
+      <!-- BAL: mérőkör -->
+      <section class="card" style="display:flex;align-items:center;flex-direction:column;gap:14px">
+        <div id="gauge" class="gauge">
+          <div class="inner">
+            <div class="title" id="phase">kattints a kezdéshez</div>
+            <div class="value" id="speed">Teszt!</div>
+            <div class="unit">Mbps</div>
+            <div class="hint" id="countHint"></div>
+          </div>
+        </div>
+        <div class="row">
+          <div class="kpi"><div class="l">Ping</div><div id="ping" class="k">–</div><div class="l">ms</div></div>
+          <div class="kpi"><div class="l">Jitter</div><div id="jitter" class="k">–</div><div class="l">ms</div></div>
+        </div>
+        <div class="row controls">
+          <label class="l">Időtartam
+            <select id="dur">
+              <option value="8">8 s</option>
+              <option value="12" selected>12 s</option>
+              <option value="20">20 s</option>
+            </select>
+          </label>
+          <label class="l">Párhuzamos szálak
+            <select id="streams">
+              <option value="2">2</option>
+              <option value="4" selected>4</option>
+              <option value="6">6</option>
+              <option value="8">8</option>
+            </select>
+          </label>
+        </div>
+        <div class="err" id="err"></div>
+        <div class="ok" id="ok"></div>
+      </section>
 
-let downloadMbps = 0;
-let uploadMbps = 0;
-let pingMs = 0;
-let jitterMs = 0;
-let animating = false;
+      <!-- JOBB: élő értékek / státusz -->
+      <section class="card">
+        <div style="font-size:13px;color:var(--muted);margin-bottom:8px">Élő adatok</div>
+        <div class="row">
+          <div class="kpi"><div class="l">Letöltés (átlag)</div><div id="dlAvg" class="k">–</div><div class="l">Mbps</div></div>
+          <div class="kpi"><div class="l">Letöltés (csúcs)</div><div id="dlPeak" class="k">–</div><div class="l">Mbps</div></div>
+          <div class="kpi"><div class="l">Feltöltés (átlag)</div><div id="ulAvg" class="k">–</div><div class="l">Mbps</div></div>
+          <div class="kpi"><div class="l">Feltöltés (csúcs)</div><div id="ulPeak" class="k">–</div><div class="l">Mbps</div></div>
+        </div>
+        <div style="margin-top:16px;color:var(--muted);font-size:13px;line-height:1.5">
+          <b>Proxy mód:</b> A mérés CORS-proxyval fut. A nagy terhelés vagy a proxy tiltás pontatlanságot okozhat.
+          Ha gond van, nyisd meg: <a target="_blank" href="https://cors-anywhere.herokuapp.com/corsdemo">CORS Anywhere unlock</a> és kérj ideiglenes hozzáférést.
+        </div>
+      </section>
+    </main>
+  </div>
 
-const info = {
-  ping: document.getElementById('ping'),
-  jitter: document.getElementById('jitter'),
-  download: document.getElementById('download'),
-  upload: document.getElementById('upload')
-};
+  <script>
+    // ======= KONFIG =======
+    const PROXIES = [
+      'https://corsproxy.io/?',
+    ];
+    const DOWNLOAD_SOURCES = [
+      'https://speed.hetzner.de/100MB.bin',
+      'https://proof.ovh.net/files/100Mb.dat',
+      'https://download.thinkbroadband.com/100MB.zip'
+    ];
+    const UPLOAD_ENDPOINT = 'https://httpbin.org/post';
+    const COUNTDOWN = 3;              // 3..1
+    const SAMPLE_MS = 250;            // élő sebesség mintavételezés
+    const SCALE_MBPS = 1000;          // kör skála max
 
-function drawCircle(progressD=0, progressU=0) {
-  ctx.clearRect(0,0,canvas.width,canvas.height);
-  // háttér kör
-  ctx.beginPath();
-  ctx.arc(canvas.width/2, canvas.height/2, radius, 0, 2*Math.PI);
-  ctx.fillStyle = '#111';
-  ctx.fill();
+    // ======= ELEMEK =======
+    const el = (id)=>document.getElementById(id);
+    const gauge = el('gauge');
+    const speed = el('speed');
+    const phase = el('phase');
+    const countHint = el('countHint');
+    const errBox = el('err');
+    const okBox = el('ok');
+    const pingEl = el('ping');
+    const jitterEl = el('jitter');
+    const dlAvgEl = el('dlAvg');
+    const dlPeakEl = el('dlPeak');
+    const ulAvgEl = el('ulAvg');
+    const ulPeakEl = el('ulPeak');
+    const durSel = el('dur');
+    const streamsSel = el('streams');
 
-  // letöltés sáv (sárga)
-  ctx.beginPath();
-  ctx.arc(canvas.width/2, canvas.height/2, radius, -Math.PI/2, -Math.PI/2 + 2*Math.PI*progressD/100);
-  ctx.strokeStyle = '#FFD700';
-  ctx.lineWidth = 15;
-  ctx.stroke();
+    let running = false; let phaseId = 'idle';
 
-  // feltöltés sáv (lila)
-  ctx.beginPath();
-  ctx.arc(canvas.width/2, canvas.height/2, radius-20, -Math.PI/2, -Math.PI/2 + 2*Math.PI*progressU/100);
-  ctx.strokeStyle = '#9400D3';
-  ctx.lineWidth = 15;
-  ctx.stroke();
+    function showErr(msg){ errBox.style.display='block'; errBox.textContent = msg; }
+    function clearErr(){ errBox.style.display='none'; errBox.textContent=''; }
+    function showOk(msg){ okBox.style.display='block'; okBox.textContent=msg; setTimeout(()=>okBox.style.display='none', 4000); }
 
-  // középen szöveg
-  ctx.fillStyle = '#fff';
-  ctx.font = '24px Arial';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText('SpeedHU', canvas.width/2, canvas.height/2);
-}
-
-// egyszerű animáció
-function animateCircle(targetD, targetU) {
-  const step = 1;
-  function stepAnim() {
-    if (!animating) return;
-    if (downloadMbps < targetD) downloadMbps += step;
-    if (downloadMbps > targetD) downloadMbps -= step;
-    if (uploadMbps < targetU) uploadMbps += step;
-    if (uploadMbps > targetU) uploadMbps -= step;
-    drawCircle(downloadMbps, uploadMbps);
-    if (downloadMbps !== targetD || uploadMbps !== targetU) {
-      requestAnimationFrame(stepAnim);
+    function setGauge(mbps){
+      const pct = Math.max(0, Math.min(1, mbps / SCALE_MBPS));
+      const deg = pct * 270;
+      const color = (phaseId==='upload')? getComputedStyle(document.documentElement).getPropertyValue('--ul').trim() : getComputedStyle(document.documentElement).getPropertyValue('--dl').trim();
+      gauge.style.background = `conic-gradient(${color} 0deg, ${color} ${deg}deg, var(--ring) ${deg}deg)`;
+      speed.textContent = Number.isFinite(mbps)? mbps.toFixed(1) : '0.0';
+      gauge.classList.toggle('pulse-dl', phaseId==='download');
+      gauge.classList.toggle('pulse-ul', phaseId==='upload');
     }
-  }
-  stepAnim();
-}
 
-// mérés funkció
-async function runTest() {
-  animating = true;
-  info.download.textContent = '0.0';
-  info.upload.textContent = '0.0';
-  info.ping.textContent = '0';
-  info.jitter.textContent = '0';
-  drawCircle(0,0);
+    function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
 
-  const corsPrefix = 'https://corsproxy.io/?';
-  const downloadFile = 'https://speed.hetzner.de/100MB.bin'; // nyilvános fájl
-  const uploadFile = 'https://httpbin.org/post'; // POST echo endpoint
+    function withProxy(url){ return CURRENT_PROXY + url; }
 
-  // Ping
-  const pingTimes = [];
-  for(let i=0;i<5;i++){
-    const start = performance.now();
-    await fetch(corsPrefix + downloadFile, {method:'HEAD'});
-    const delta = performance.now()-start;
-    pingTimes.push(delta);
-  }
-  pingMs = Math.round(pingTimes.reduce((a,b)=>a+b)/pingTimes.length);
-  jitterMs = Math.round(Math.sqrt(pingTimes.map(t=>Math.pow(t-pingMs,2)).reduce((a,b)=>a+b)/pingTimes.length));
-  info.ping.textContent = pingMs;
-  info.jitter.textContent = jitterMs;
+    // Proxy kiválasztás
+    let CURRENT_PROXY = PROXIES[0];
 
-  // Download mérés
-  const dlStart = performance.now();
-  const dlResponse = await fetch(corsPrefix + downloadFile);
-  const dlBlob = await dlResponse.blob();
-  const dlEnd = performance.now();
-  const dlSize = dlBlob.size*8/1024/1024; // Mbps
-  const dlTime = (dlEnd-dlStart)/1000;
-  const dlSpeed = dlSize/dlTime;
-  info.download.textContent = dlSpeed.toFixed(1);
-  animateCircle(dlSpeed, 0);
+    async function countdown(){
+      phase.textContent='kezdés';
+      for(let i=COUNTDOWN;i>0;i--){ speed.textContent = String(i); countHint.textContent=''; await sleep(1000); }
+    }
 
-  // Upload mérés (simulált, kisebb adat)
-  const uploadData = new Uint8Array(10*1024*1024); // 10MB
-  const ulStart = performance.now();
-  const ulResponse = await fetch(corsPrefix + uploadFile, {method:'POST', body:uploadData});
-  const ulEnd = performance.now();
-  const ulSpeed = uploadData.length*8/1024/1024/((ulEnd-ulStart)/1000);
-  info.upload.textContent = ulSpeed.toFixed(1);
-  animateCircle(dlSpeed, ulSpeed);
+    async function pingJitter(samples=10){
+      phase.textContent='ping/jitter'; phaseId='ping'; setGauge(0);
+      const vals=[];
+      for(let i=0;i<samples;i++){
+        const t0 = performance.now();
+        try{ await fetch(withProxy('https://httpbin.org/get?x='+Math.random()), {cache:'no-store'}); }catch(e){}
+        const t1 = performance.now();
+        vals.push(t1-t0);
+        await sleep(60);
+      }
+      const avg = vals.reduce((a,b)=>a+b,0)/Math.max(vals.length,1);
+      const mean = avg; const variance = vals.reduce((a,b)=>a+(b-mean)**2,0)/Math.max(vals.length,1);
+      const j = Math.sqrt(variance);
+      pingEl.textContent = avg.toFixed(1);
+      jitterEl.textContent = j.toFixed(1);
+    }
 
-  animating = false;
-}
+    async function openStream(url, onBytes){
+      const res = await fetch(withProxy(url + (url.includes('?')?'&':'?') + 'r=' + Math.random().toString(36).slice(2)), { cache:'no-store' });
+      if(!res.ok) throw new Error('HTTP '+res.status);
+      if(!res.body) throw new Error('no body');
+      const reader = res.body.getReader();
+      while(true){
+        const {done,value} = await reader.read();
+        if(done) break; if(value) onBytes(value.byteLength);
+      }
+    }
 
-// start gomb
-document.getElementById('startBtn').addEventListener('click', runTest);
+    async function measureDownload(sec, streams){
+      phase.textContent='letöltés'; phaseId='download'; setGauge(0);
+      let total=0, last=0, lastT=performance.now(); let peak=0;
+      const end = performance.now() + sec*1000;
+      let srcIdx=0;
+      const workers = Array.from({length:streams}, ()=> (async()=>{
+        while(performance.now()<end){
+          const src = DOWNLOAD_SOURCES[srcIdx++ % DOWNLOAD_SOURCES.length];
+          try{ await openStream(src, n=> total+=n); }catch(e){ /* next */ }
+        }
+      })());
+      while(performance.now()<end){
+        await sleep(SAMPLE_MS);
+        const now = performance.now();
+        const dt = (now-lastT)/1000; const bytes = total-last; lastT=now; last=total;
+        const bps = bytes/dt; peak = Math.max(peak,bps);
+        const elapsed = sec - Math.max(0,(end-now)/1000);
+        const avg = total/Math.max(elapsed,0.001);
+        setGauge(bps*8/1e6);
+        dlAvgEl.textContent = (avg*8/1e6).toFixed(1);
+        dlPeakEl.textContent = (peak*8/1e6).toFixed(1);
+      }
+      await Promise.allSettled(workers);
+    }
 
-drawCircle();
-</script>
+    function makeBlob(size){ const u8 = new Uint8Array(size); crypto.getRandomValues(u8); return new Blob([u8]); }
+
+    async function measureUpload(sec, streams){
+      phase.textContent='feltöltés'; phaseId='upload'; setGauge(0);
+      let total=0, last=0, lastT=performance.now(); let peak=0;
+      const end = performance.now() + sec*1000;
+      const workers = Array.from({length:streams}, ()=> (async()=>{
+        while(performance.now()<end){
+          const body = makeBlob(2*1024*1024); // 2MiB chunkok
+          try{ await fetch(withProxy(UPLOAD_ENDPOINT), {method:'POST', body}); total += body.size; }catch(e){ /* ignore */ }
+        }
+      })());
+      while(performance.now()<end){
+        await sleep(SAMPLE_MS);
+        const now = performance.now();
+        const dt = (now-lastT)/1000; const bytes = total-last; lastT=now; last=total;
+        const bps = bytes/dt; peak = Math.max(peak,bps);
+        const elapsed = sec - Math.max(0,(end-now)/1000);
+        const avg = total/Math.max(elapsed,0.001);
+        setGauge(bps*8/1e6);
+        ulAvgEl.textContent = (avg*8/1e6).toFixed(1);
+        ulPeakEl.textContent = (peak*8/1e6).toFixed(1);
+      }
+      await Promise.allSettled(workers);
+    }
+
+    async function startTest(){
+      if(running) return; running=true; clearErr(); showOk('Proxy: '+CURRENT_PROXY);
+      try{
+        await fetch(CURRENT_PROXY+'https://example.com/', {cache:'no-store'});
+      }catch(e){ showErr('A proxy nem elérhető vagy nincs unlock-olva. Nyisd meg: cors-anywhere / corsdemo'); running=false; return; }
+
+      await countdown();
+      await pingJitter(10);
+      const dur = parseInt(durSel.value,10); const streams = parseInt(streamsSel.value,10);
+      // letöltés
+      try{ await measureDownload(dur, streams); }catch(e){ showErr('Letöltés hiba: '+e.message); }
+      // feltöltés (fele idő, fele szál)
+      try{ await measureUpload(Math.max(5, Math.floor(dur/2)), Math.max(2, Math.floor(streams/2))); }catch(e){ showErr('Feltöltés hiba: '+e.message); }
+
+      phaseId='idle'; setGauge(0); phase.textContent='kész'; speed.textContent='Kész!';
+      running=false;
+    }
+
+    gauge.addEventListener('click', startTest);
+  </script>
 </body>
 </html>
