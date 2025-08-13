@@ -9,82 +9,50 @@ body {
   font-family: 'Arial', sans-serif;
   background: #f9f9f9;
   text-align: center;
-  padding: 40px 20px;
+  padding: 50px 20px;
   color: #333;
 }
 
-h1 { margin-bottom: 30px; }
+h1 { margin-bottom: 40px; }
 
+/* Kör alakú gomb */
 #testBtn {
-  padding: 15px 50px;
-  font-size: 22px;
+  width: 100px;
+  height: 100px;
+  border-radius: 50%;
   border: none;
-  border-radius: 25px;
   background: #4CAF50;
   color: white;
+  font-size: 20px;
+  font-weight: bold;
   cursor: pointer;
   margin-bottom: 40px;
   transition: 0.3s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.2);
 }
+
 #testBtn:hover { background: #45a049; }
+#testBtn:active { transform: scale(0.95); }
 
-.barContainer {
-  width: 80%;
-  height: 35px;
-  background: #e0e0e0;
-  border-radius: 25px;
-  margin: 20px auto;
+/* Kör animáció a méréshez */
+#circleContainer {
   position: relative;
-  overflow: hidden;
+  margin: 0 auto 30px auto;
+  width: 200px;
+  height: 200px;
 }
 
-.bar {
+#spinnerCircle {
+  width: 100%;
   height: 100%;
-  width: 0;
-  border-radius: 25px;
-  position: relative;
-}
-
-.bar::after {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: -50%;
-  width: 50%;
-  height: 100%;
-  background: rgba(255,255,255,0.3);
-  transform: skewX(-20deg);
-  animation: shine 1s linear infinite;
-}
-
-@keyframes shine {
-  0% { left: -50%; }
-  100% { left: 100%; }
-}
-
-.downloadBar { background: linear-gradient(90deg, #81C784, #4CAF50); }
-.uploadBar { background: linear-gradient(90deg, #64B5F6, #2196F3); }
-.pingBar { background: linear-gradient(90deg, #FFC107, #FF9800); }
-
-.barLabel {
-  position: absolute;
-  right: 10px;
-  top: 50%;
-  transform: translateY(-50%);
-  font-weight: bold;
-  color: #fff;
-  text-shadow: 1px 1px 2px rgba(0,0,0,0.4);
-}
-
-#spinner {
-  display: none;
-  margin: 20px auto;
-  border: 6px solid #f3f3f3;
-  border-top: 6px solid #4CAF50;
+  border: 12px solid #e0e0e0;
+  border-top: 12px solid #4CAF50;
   border-radius: 50%;
-  width: 50px;
-  height: 50px;
   animation: spin 1s linear infinite;
+  box-shadow: 0 0 20px rgba(76,175,80,0.6);
 }
 
 @keyframes spin {
@@ -92,11 +60,21 @@ h1 { margin-bottom: 30px; }
   100% { transform: rotate(360deg); }
 }
 
-#result { margin-top: 30px; font-size: 18px; }
+#circleText {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 18px;
+  font-weight: bold;
+}
+
+#result { margin-top: 20px; font-size: 18px; }
 
 @media (max-width: 500px){
-  #testBtn { width: 100%; font-size: 20px; }
-  .barContainer { width: 95%; }
+  #circleContainer { width: 150px; height: 150px; }
+  #circleText { font-size: 16px; }
+  #testBtn { width: 80px; height: 80px; font-size: 18px; }
 }
 </style>
 </head>
@@ -105,16 +83,10 @@ h1 { margin-bottom: 30px; }
 <h1>SpeedHU - Internet sebességmérő</h1>
 <button id="testBtn">Teszt!</button>
 
-<div id="spinner"></div>
-
-<h3>Ping</h3>
-<div class="barContainer"><div id="pingBar" class="bar pingBar"><span class="barLabel" id="pingLabel">0 ms</span></div></div>
-
-<h3>Letöltés</h3>
-<div class="barContainer"><div id="downloadBar" class="bar downloadBar"><span class="barLabel" id="downloadLabel">0 Mbps</span></div></div>
-
-<h3>Feltöltés</h3>
-<div class="barContainer"><div id="uploadBar" class="bar uploadBar"><span class="barLabel" id="uploadLabel">0 Mbps</span></div></div>
+<div id="circleContainer">
+  <div id="spinnerCircle"></div>
+  <div id="circleText">0 ms<br>0 Mbps<br>0 Mbps</div>
+</div>
 
 <p id="result"></p>
 
@@ -150,51 +122,24 @@ async function measureUpload() {
   return (bits/duration/1024/1024).toFixed(2);
 }
 
-// Valós idejű animáció
-function animateBar(bar, label, targetValue, unit, duration=1000) {
-  let width = 0;
-  let value = 0;
-  const stepTime = 20;
-  const stepWidth = (targetValue * stepTime) / duration;
-  const interval = setInterval(() => {
-    width += stepWidth;
-    value += stepWidth;
-    if(width >= targetValue) { width = targetValue; value = targetValue; clearInterval(interval); }
-    bar.style.width = width + "%";
-    label.textContent = Math.round(value) + " " + unit;
-  }, stepTime);
-  return new Promise(resolve => setTimeout(resolve, duration));
-}
-
 // Fő teszt függvény
 async function runTest() {
-  const spinner = document.getElementById("spinner");
-  const pingBar = document.getElementById("pingBar");
-  const downloadBar = document.getElementById("downloadBar");
-  const uploadBar = document.getElementById("uploadBar");
-  const pingLabel = document.getElementById("pingLabel");
-  const downloadLabel = document.getElementById("downloadLabel");
-  const uploadLabel = document.getElementById("uploadLabel");
+  const circleText = document.getElementById("circleText");
   const result = document.getElementById("result");
 
-  // Reset
-  [pingBar, downloadBar, uploadBar].forEach(bar => bar.style.width="0%");
-  [pingLabel, downloadLabel, uploadLabel].forEach(label => label.textContent="0");
-
+  circleText.textContent = "Mérés...\n0 ms\n0 Mbps\n0 Mbps";
   result.textContent = "";
-  spinner.style.display = "block";
 
   const ping = await measurePing();
-  await animateBar(pingBar, ping*1.5, pingLabel, "ms", 800);
+  circleText.textContent = `Ping: ${ping} ms\n0 Mbps\n0 Mbps`;
 
   const download = await measureDownload();
-  await animateBar(downloadBar, download*5, downloadLabel, "Mbps", 1200);
+  circleText.textContent = `Ping: ${ping} ms\nLetöltés: ${download} Mbps\n0 Mbps`;
 
   const upload = await measureUpload();
-  await animateBar(uploadBar, upload*5, uploadLabel, "Mbps", 1200);
+  circleText.textContent = `Ping: ${ping} ms\nLetöltés: ${download} Mbps\nFeltöltés: ${upload} Mbps`;
 
-  spinner.style.display = "none";
-  result.textContent = `Ping: ${ping} ms | Letöltés: ${download} Mbps | Feltöltés: ${upload} Mbps`;
+  result.textContent = `Mérés kész!`;
 }
 
 document.getElementById("testBtn").addEventListener("click", runTest);
