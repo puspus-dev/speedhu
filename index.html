@@ -76,6 +76,22 @@ h1 { margin-bottom: 30px; }
   text-shadow: 1px 1px 2px rgba(0,0,0,0.4);
 }
 
+#spinner {
+  display: none;
+  margin: 20px auto;
+  border: 6px solid #f3f3f3;
+  border-top: 6px solid #4CAF50;
+  border-radius: 50%;
+  width: 50px;
+  height: 50px;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
 #result { margin-top: 30px; font-size: 18px; }
 
 @media (max-width: 500px){
@@ -88,6 +104,8 @@ h1 { margin-bottom: 30px; }
 
 <h1>SpeedHU - Internet sebességmérő</h1>
 <button id="testBtn">Teszt!</button>
+
+<div id="spinner"></div>
 
 <h3>Ping</h3>
 <div class="barContainer"><div id="pingBar" class="bar pingBar"><span class="barLabel" id="pingLabel">0 ms</span></div></div>
@@ -150,6 +168,7 @@ function animateBar(bar, label, targetValue, unit, duration=1000) {
 
 // Fő teszt függvény
 async function runTest() {
+  const spinner = document.getElementById("spinner");
   const pingBar = document.getElementById("pingBar");
   const downloadBar = document.getElementById("downloadBar");
   const uploadBar = document.getElementById("uploadBar");
@@ -158,10 +177,12 @@ async function runTest() {
   const uploadLabel = document.getElementById("uploadLabel");
   const result = document.getElementById("result");
 
+  // Reset
   [pingBar, downloadBar, uploadBar].forEach(bar => bar.style.width="0%");
   [pingLabel, downloadLabel, uploadLabel].forEach(label => label.textContent="0");
 
-  result.textContent = "Mérés folyamatban...";
+  result.textContent = "";
+  spinner.style.display = "block";
 
   const ping = await measurePing();
   await animateBar(pingBar, ping*1.5, pingLabel, "ms", 800);
@@ -172,6 +193,7 @@ async function runTest() {
   const upload = await measureUpload();
   await animateBar(uploadBar, upload*5, uploadLabel, "Mbps", 1200);
 
+  spinner.style.display = "none";
   result.textContent = `Ping: ${ping} ms | Letöltés: ${download} Mbps | Feltöltés: ${upload} Mbps`;
 }
 
