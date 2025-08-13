@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SpeedHU</title>
+<style>
+body {
+  font-family: 'Arial', sans-serif;
+  background: #f0f2f5;
+  text-align: center;
+  padding: 40px 20px;
+}
+h1 { color: #333; margin-bottom: 20px; }
+#testBtn {
+  padding: 15px 40px;
+  font-size: 22px;
+  border: none;
+  border-radius: 10px;
+  background: #4CAF50;
+  color: white;
+  cursor: pointer;
+  margin-bottom: 30px;
+  transition: 0.3s;
+}
+#testBtn:hover { background: #45a049; }
+
+.barContainer {
+  width: 80%;
+  height: 30px;
+  background: #ddd;
+  border-radius: 20px;
+  margin: 15px auto;
+  overflow: hidden;
+  position: relative;
+}
+
+.bar {
+  height: 100%;
+  width: 0;
+  position: relative;
+  overflow: hidden;
+  border-radius: 20px;
+}
+
+.bar::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -50%;
+  width: 50%;
+  height: 100%;
+  background: rgba(255,255,255,0.3);
+  transform: skewX(-20deg);
+  animation: shine 1s linear infinite;
+}
+
+@keyframes shine {
+  0% { left: -50%; }
+  100% { left: 100%; }
+}
+
+.downloadBar { background: linear-gradient(90deg, #4CAF50, #81C784); }
+.uploadBar { background: linear-gradient(90deg, #2196F3, #64B5F6); }
+.pingBar { background: linear-gradient(90deg, #FF9800, #FFC107); }
+
+#result { margin-top: 25px; font-size: 18px; color: #333; }
+
+@media (max-width: 500px){
+  #testBtn { width: 100%; font-size: 20px; }
+  .barContainer { width: 95%; }
+}
+</style>
+</head>
+<body>
+
+<h1>SpeedHU - Internet sebességmérő</h1>
+<button id="testBtn">Teszt!</button>
+
+<h3>Ping</h3>
+<div class="barContainer"><div id="pingBar" class="bar pingBar"></div></div>
+
+<h3>Letöltés</h3>
+<div class="barContainer"><div id="downloadBar" class="bar downloadBar"></div></div>
+
+<h3>Feltöltés</h3>
+<div class="barContainer"><div id="uploadBar" class="bar uploadBar"></div></div>
+
+<p id="result"></p>
+
+<script>
+// Ping mérés
+async function measurePing() {
+  const start = performance.now();
+  try { await fetch("https://jsonplaceholder.typicode.com/posts/1", {cache:"no-store"}); } catch(e){}
+  const end = performance.now();
+  return Math.round(end - start);
+}
+
+// Letöltés
+async function measureDownload() {
+  const url = "https://upload.wikimedia.org/wikipedia/commons/3/3f/Fronalpstock_big.jpg";
+  const start = performance.now();
+  const response = await fetch(url, { cache: "no-store" });
+  const blob = await response.blob();
+  const end = performance.now();
+  const duration = (end - start)/1000;
+  const bits = blob.size*8;
+  return (bits/duration/1024/1024).toFixed(2);
+}
+
+// Feltöltés
+async function measureUpload() {
+  const data = new Uint8Array(1024*1024*2);
+  const start = performance.now();
+  try { await fetch("https://jsonplaceholder.typicode.com/posts",{method:"POST",body:data}); } catch(e){}
+  const end = performance.now();
+  const duration = (end - start)/1000;
+  const bits = data.length*8;
+  return (bits/duration/1024/1024).toFixed(2);
+}
+
+// fokozatos animáció
+function animateBar(bar, targetPercent, duration=1000) {
+  let width = 0;
+  const stepTime = 20;
+  const step = (targetPercent * stepTime) / duration;
+  return new Promise(resolve => {
+    const interval = setInterval(() => {
+      width += step;
+      if(width >= targetPercent) { width = targetPercent; clearInterval(interval); resolve(); }
+      bar.style.width = width + "%";
+    }, stepTime);
+  });
+}
+
+async function runTest() {
+  const pingBar = document.getElementById("pingBar");
+  const downloadBar = document.getElementById("downloadBar");
+  const uploadBar = document.getElementById("uploadBar");
+  const result = document.getElementById("result");
+
+  [pingBar, downloadBar, uploadBar].forEach(bar => bar.style.width="0%");
+
+  result.textContent = "Mérés folyamatban...";
+
+  const ping = await measurePing();
+  await animateBar(pingBar, Math.min(ping*1.5,100), 800);
+
+  const download = await measureDownload();
+  await animateBar(downloadBar, Math.min(download*5,100), 1200);
+
+  const upload = await measureUpload();
+  await animateBar(uploadBar, Math.min(upload*5,100), 1200);
+
+  result.textContent = `Ping: ${ping} ms | Letöltés: ${download} Mbps | Feltöltés: ${upload} Mbps`;
+}
+
+document.getElementById("testBtn").addEventListener("click", runTest);
+</script>
+
+</body>
+</html>
